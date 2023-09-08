@@ -3,6 +3,9 @@ from torchvision import datasets
 from diffusion.utils import DATASET_ROOT, get_classes_templates
 from diffusion.dataset.objectnet import ObjectNetBase
 from diffusion.dataset.imagenet import ImageNet as ImageNetBase
+import pandas as pd
+import os 
+import glob
 
 
 class MNIST(datasets.MNIST):
@@ -93,15 +96,39 @@ def get_target_dataset(name: str, train=False, transform=None, target_transform=
     elif name == "mnist":
         dataset = MNIST(root=DATASET_ROOT, train=train, transform=transform, target_transform=target_transform,
                         download=True)
+    elif name == "clevr":
+        dataset = datasets.ImageFolder('/content/image_data', transform=transform)
+        classes = pd.read_csv('clevr_prompts.csv')
+        #dataset.class_to_idx = {classes.iloc[i, 1] : classes.iloc[i,2] for i in range(len(classes))}
+        print("class to idx from folders: ", dataset.class_to_idx)
+        df1 = pd.read_csv('/content/drive/MyDrive/single_object/test.csv')
+        dfs = df1
+        df2 = pd.read_csv('/content/drive/MyDrive/single_object/train.csv')
+        dfs = dfs.append(df2, ignore_index=True)
+        df3 = pd.read_csv('/content/drive/MyDrive/single_object/val.csv')
+        dfs = dfs.append(df3, ignore_index=True)
+
+        # dataset.file_to_class = {}
+        # count = 0
+        # for name in sorted(glob.glob('/content/drive/MyDrive/single_object/images/*png')):
+        #     cur_name = os.path.basename(name)
+        #     for i in range(len(dfs)):
+        #       filename = dfs.iloc[i,1]
+        #       if filename == cur_name:
+        #         dataset.file_to_class[str(count)] = dataset.class_to_idx[dfs.iloc[i,2]]
+        #         count += 1
+
     else:
         raise ValueError(f"Dataset {name} not supported.")
 
-    if name in {'mnist', 'cifar10', 'stl10', 'aircraft'}:
+    if name in {'mnist', 'cifar10', 'stl10', 'aircraft', 'clevr'}:
         dataset.file_to_class = {
             str(idx): dataset[idx][1]
             for idx in range(len(dataset))
         }
 
+    #print("class to idx: ", dataset.class_to_idx) # class name : idx
+    print("file to class: ", dataset.file_to_class) #{num : class}
     assert hasattr(dataset, "class_to_idx"), f"Dataset {name} does not have a class_to_idx attribute."
     assert hasattr(dataset, "file_to_class"), f"Dataset {name} does not have a file_to_class attribute."
     return dataset

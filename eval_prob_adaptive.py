@@ -11,6 +11,7 @@ from diffusion.models import get_sd_model, get_scheduler_config
 from diffusion.utils import LOG_DIR, get_formatstr
 import torchvision.transforms as torch_transforms
 from torchvision.transforms.functional import InterpolationMode
+import matplotlib.pyplot as plt
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -34,6 +35,19 @@ def get_transform(interpolation=InterpolationMode.BICUBIC, size=512):
         torch_transforms.Normalize([0.5], [0.5])
     ])
     return transform
+
+# inverse_transform = torch_transforms.Compose([
+#     torch_transforms.Normalize([-0.5], [1/0.5]),
+#     torch_transforms.ToPILImage(),
+#     torch_transforms.Resize(512),  # Note: This assumes the original image size is known
+# ])
+
+inverse_transform = torch_transforms.Compose([
+    torch_transforms.Normalize([-1.0], [2.0]),
+    torch_transforms.ToPILImage(),
+    torch_transforms.CenterCrop(512),
+    torch_transforms.Resize(512, interpolation=InterpolationMode.BICUBIC)
+])
 
 
 def center_crop_resize(img, interpolation=InterpolationMode.BILINEAR):
@@ -128,7 +142,7 @@ def main():
     # dataset args
     parser.add_argument('--dataset', type=str, default='pets',
                         choices=['pets', 'flowers', 'stl10', 'mnist', 'cifar10', 'food', 'caltech101', 'imagenet',
-                                 'objectnet', 'aircraft'], help='Dataset to use')
+                                 'objectnet', 'aircraft', 'clevr'], help='Dataset to use')
     parser.add_argument('--split', type=str, default='train', choices=['train', 'test'], help='Name of split')
 
     # run args
@@ -220,6 +234,7 @@ def main():
     correct = 0
     total = 0
     pbar = tqdm.tqdm(idxs_to_eval)
+    rows_list = []
     for i in pbar:
         if total > 0:
             pbar.set_description(f'Acc: {100 * correct / total:.2f}%')
@@ -237,13 +252,29 @@ def main():
             if args.dtype == 'float16':
                 img_input = img_input.half()
             x0 = vae.encode(img_input).latent_dist.mean
+            torch.save(x0, 'x0.pt')
             x0 *= 0.18215
         pred_idx, pred_errors = eval_prob_adaptive(unet, x0, text_embeddings, scheduler, args, latent_size, all_noise)
         pred = prompts_df.classidx[pred_idx]
+        print("pred ",pred)
+        print("label ", label)
+
+        dict1 = {'true': label, 'pred': pred}
+        rows_list.append(dict1)
+        prediction = list(target_dataset.class_to_idx.keys())[list(target_dataset.class_to_idx.values()).index(pred)]
+        lbl = list(target_dataset.class_to_idx.keys())[list(target_dataset.class_to_idx.values()).index(label)]
+        print("prediction: ", prediction)
+        print("true_label: ", lbl)
+        orig_image = inverse_transform(image)
+        plt.imshow(orig_image)
+        plt.savefig(prediction + '_' + lbl +  '.png')
         torch.save(dict(errors=pred_errors, pred=pred, label=label), fname)
         if pred == label:
             correct += 1
         total += 1
+
+    df = pd.DataFrame(rows_list)
+    df.to_csv('output.csv')
 
 
 if __name__ == '__main__':
